@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
-import { AlertCircle, CheckCircle, Upload, ArrowLeft } from 'lucide-react';
+import { AlertCircle, CheckCircle, Upload, ArrowLeft, X, FileText } from 'lucide-react';
 
 const NewComplaint = () => {
     const { user } = useAuth();
@@ -13,6 +13,8 @@ const NewComplaint = () => {
         priority: 'Low',
         description: '',
     });
+    const [files, setFiles] = useState([]);
+    const [uploadingFiles, setUploadingFiles] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
@@ -20,6 +22,17 @@ const NewComplaint = () => {
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData((prev) => ({ ...prev, [name]: value }));
+    };
+
+    const handleFileChange = (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+            const newFiles = Array.from(e.target.files);
+            setFiles(prev => [...prev, ...newFiles]);
+        }
+    };
+
+    const removeFile = (index) => {
+        setFiles(prev => prev.filter((_, i) => i !== index));
     };
 
     const handleSubmit = async (e) => {
@@ -33,9 +46,26 @@ const NewComplaint = () => {
                 throw new Error('Please fill in all required fields');
             }
 
+            // 1. Upload files first
+            let uploadedAttachments = [];
+            if (files.length > 0) {
+                setUploadingFiles(true);
+                const uploadPromises = files.map(file => api.uploadFile(file));
+                try {
+                    uploadedAttachments = await Promise.all(uploadPromises);
+                } catch (uploadErr) {
+                    console.error("Upload error", uploadErr);
+                    throw new Error("Failed to upload attachments. Please try again.");
+                } finally {
+                    setUploadingFiles(false);
+                }
+            }
+
+            // 2. Create Complaint with attachments
             await api.createComplaint({
                 ...formData,
                 userId: user.id,
+                attachments: uploadedAttachments
             });
 
             setSuccess('Complaint submitted successfully!');
@@ -65,7 +95,7 @@ const NewComplaint = () => {
             </div>
 
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                {/* Progress Indicator (Fake) */}
+                {/* Progress Indicator */}
                 <div className="h-1 w-full bg-gray-100">
                     <div className="h-1 bg-indigo-600 w-1/3"></div>
                 </div>
@@ -134,10 +164,10 @@ const NewComplaint = () => {
                                         value={formData.priority}
                                         onChange={handleChange}
                                     >
-                                        <option value="Low">Low</option>
-                                        <option value="Medium">Medium</option>
-                                        <option value="High">High</option>
-                                        <option value="Critical">Critical</option>
+                                        <option value="Low">Low (48h SLA)</option>
+                                        <option value="Medium">Medium (24h SLA)</option>
+                                        <option value="High">High (8h SLA)</option>
+                                        <option value="Critical">Critical (4h SLA)</option>
                                     </select>
                                 </div>
                             </div>
@@ -157,10 +187,10 @@ const NewComplaint = () => {
                                 />
                             </div>
 
-                            {/* Custom File Upload UI */}
+                            {/* File Upload UI */}
                             <div>
                                 <label className="block text-sm font-semibold text-gray-700 mb-2">Attachments</label>
-                                <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-xl hover:bg-gray-50 transition-colors cursor-pointer group">
+                                <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-xl hover:bg-gray-50 transition-colors cursor-pointer group relative">
                                     <div className="space-y-1 text-center">
                                         <div className="mx-auto h-12 w-12 text-gray-400 group-hover:text-indigo-500 transition-colors flex items-center justify-center rounded-full bg-gray-50 group-hover:bg-indigo-50">
                                             <Upload size={24} />
@@ -170,16 +200,49 @@ const NewComplaint = () => {
                                                 htmlFor="file-upload"
                                                 className="relative cursor-pointer bg-transparent rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none"
                                             >
-                                                <span>Upload a file</span>
-                                                <input id="file-upload" name="file-upload" type="file" className="sr-only" />
+                                                <span>Upload files</span>
+                                                <input
+                                                    id="file-upload"
+                                                    name="file-upload"
+                                                    type="file"
+                                                    className="sr-only"
+                                                    multiple
+                                                    onChange={handleFileChange}
+                                                />
                                             </label>
                                             <p className="pl-1">or drag and drop</p>
                                         </div>
                                         <p className="text-xs text-gray-500">
-                                            PNG, JPG, PDF up to 10MB
+                                            Images, PDF up to 10MB
                                         </p>
                                     </div>
                                 </div>
+
+                                {/* File List Preview */}
+                                {files.length > 0 && (
+                                    <ul className="mt-4 space-y-2">
+                                        {files.map((file, idx) => (
+                                            <li key={idx} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                                <div className="flex items-center space-x-3">
+                                                    <div className="h-8 w-8 bg-indigo-100 rounded-lg flex items-center justify-center text-indigo-600">
+                                                        <FileText size={16} />
+                                                    </div>
+                                                    <div className="text-sm">
+                                                        <p className="font-medium text-gray-700 truncate max-w-xs">{file.name}</p>
+                                                        <p className="text-xs text-gray-500">{(file.size / 1024).toFixed(1)} KB</p>
+                                                    </div>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeFile(idx)}
+                                                    className="text-gray-400 hover:text-red-500 transition-colors"
+                                                >
+                                                    <X size={18} />
+                                                </button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
                             </div>
                         </div>
 
@@ -203,7 +266,7 @@ const NewComplaint = () => {
                                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                         </svg>
-                                        Submitting...
+                                        {uploadingFiles ? 'Uploading Files...' : 'Submitting...'}
                                     </>
                                 ) : 'Submit Ticket'}
                             </button>

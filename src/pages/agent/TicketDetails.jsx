@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import StatusBadge from '../../components/complaints/StatusBadge';
-import { ArrowLeft, Send, CheckCircle, Clock, AlertTriangle, User, MoreVertical, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Send, CheckCircle, Clock, AlertTriangle, User, MessageSquare, Paperclip, RefreshCw, FileText } from 'lucide-react';
 
 const TicketDetails = () => {
     const { id } = useParams();
@@ -12,11 +12,13 @@ const TicketDetails = () => {
     const [complaint, setComplaint] = useState(null);
     const [loading, setLoading] = useState(true);
     const [updating, setUpdating] = useState(false);
+    const [slaStatus, setSlaStatus] = useState(null);
 
     const fetchComplaint = async () => {
         try {
             const data = await api.getComplaintById(id);
             setComplaint(data);
+            calculateSLA(data.slaDeadline, data.status);
         } catch (err) {
             console.error('Complaint not found');
         } finally {
@@ -26,7 +28,42 @@ const TicketDetails = () => {
 
     useEffect(() => {
         fetchComplaint();
+        const interval = setInterval(() => {
+            if (complaint) {
+                calculateSLA(complaint.slaDeadline, complaint.status);
+            }
+        }, 60000); // Update every minute
+        return () => clearInterval(interval);
     }, [id]);
+
+    const calculateSLA = (deadlineIso, status) => {
+        if (status === 'Resolved' || status === 'Closed') {
+            setSlaStatus({ text: 'Completed', color: 'text-green-600', bg: 'bg-green-50' });
+            return;
+        }
+
+        if (!deadlineIso) return;
+
+        const now = new Date();
+        const deadline = new Date(deadlineIso);
+        const diff = deadline - now;
+
+        if (diff < 0) {
+            setSlaStatus({
+                text: `Overdue by ${Math.abs(Math.ceil(diff / (1000 * 60 * 60)))}h`,
+                color: 'text-red-600',
+                bg: 'bg-red-50'
+            });
+        } else {
+            const hours = Math.floor(diff / (1000 * 60 * 60));
+            const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            setSlaStatus({
+                text: `${hours}h ${minutes}m remaining`,
+                color: hours < 4 ? 'text-orange-600' : 'text-blue-600',
+                bg: hours < 4 ? 'bg-orange-50' : 'bg-blue-50'
+            });
+        }
+    };
 
     const handleStatusUpdate = async (newStatus) => {
         try {
@@ -54,6 +91,8 @@ const TicketDetails = () => {
             </button>
         </div>
     );
+
+    const isReopenable = (complaint.status === 'Resolved' || complaint.status === 'Closed');
 
     return (
         <div className="max-w-6xl mx-auto">
@@ -100,13 +139,42 @@ const TicketDetails = () => {
                             {complaint.description}
                         </div>
 
+                        {/* Attachments Section */}
+                        {complaint.attachments && complaint.attachments.length > 0 && (
+                            <div className="mb-8">
+                                <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                    <Paperclip size={16} /> Attachments ({complaint.attachments.length})
+                                </h4>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                    {complaint.attachments.map((att) => (
+                                        <a
+                                            key={att.id}
+                                            href={att.file_url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="group relative flex items-center justify-center h-24 bg-gray-100 rounded-lg border border-gray-200 hover:border-indigo-300 transition-all overflow-hidden"
+                                        >
+                                            {att.file_type?.startsWith('image/') ? (
+                                                <img src={att.file_url} alt="attachment" className="w-full h-full object-cover opacity-90 group-hover:opacity-100" />
+                                            ) : (
+                                                <div className="flex flex-col items-center text-gray-500 group-hover:text-indigo-600">
+                                                    <FileText size={24} />
+                                                    <span className="text-xs mt-1 font-medium">View File</span>
+                                                </div>
+                                            )}
+                                        </a>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         {/* Action Toolbar */}
                         <div className="flex flex-wrap gap-3 pt-6 border-t border-gray-100">
-                            {complaint.status !== 'In Progress' && complaint.status !== 'Resolved' && (
+                            {complaint.status === 'Open' && (
                                 <button
                                     onClick={() => handleStatusUpdate('In Progress')}
                                     disabled={updating}
-                                    className="inline-flex items-center px-4 py-2 bg-indigo-600 border border-transparent rounded-lg font-semibold text-xs text-white uppercase tracking-widest hover:bg-indigo-700 active:bg-indigo-900 focus:outline-none focus:border-indigo-900 focus:ring ring-indigo-300 disabled:opacity-25 transition ease-in-out duration-150"
+                                    className="inline-flex items-center px-4 py-2 bg-indigo-600 border border-transparent rounded-lg font-semibold text-xs text-white uppercase tracking-widest hover:bg-indigo-700 active:bg-indigo-900 focus:outline-none transition ease-in-out duration-150"
                                 >
                                     Start Working
                                 </button>
@@ -116,15 +184,26 @@ const TicketDetails = () => {
                                 <button
                                     onClick={() => handleStatusUpdate('Resolved')}
                                     disabled={updating}
-                                    className="inline-flex items-center px-4 py-2 bg-green-600 border border-transparent rounded-lg font-semibold text-xs text-white uppercase tracking-widest hover:bg-green-700 active:bg-green-900 focus:outline-none focus:border-green-900 focus:ring ring-green-300 disabled:opacity-25 transition ease-in-out duration-150"
+                                    className="inline-flex items-center px-4 py-2 bg-green-600 border border-transparent rounded-lg font-semibold text-xs text-white uppercase tracking-widest hover:bg-green-700 active:bg-green-900 focus:outline-none transition ease-in-out duration-150"
                                 >
                                     <CheckCircle size={16} className="mr-2" />
                                     Mark as Resolved
                                 </button>
                             )}
 
-                            <button className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg font-semibold text-xs text-gray-700 uppercase tracking-widest shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-25 transition ease-in-out duration-150">
-                                Decline / Reassign
+                            {isReopenable && (
+                                <button
+                                    onClick={() => handleStatusUpdate('Open')}
+                                    disabled={updating}
+                                    className="inline-flex items-center px-4 py-2 bg-gray-800 border border-transparent rounded-lg font-semibold text-xs text-white uppercase tracking-widest hover:bg-gray-900 focus:outline-none transition ease-in-out duration-150"
+                                >
+                                    <RefreshCw size={16} className="mr-2" />
+                                    Reopen Ticket
+                                </button>
+                            )}
+
+                            <button className="inline-flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg font-semibold text-xs text-gray-700 uppercase tracking-widest shadow-sm hover:bg-gray-50 focus:outline-none disabled:opacity-25 transition ease-in-out duration-150">
+                                Defer / Reassign
                             </button>
                         </div>
                     </div>
@@ -203,22 +282,39 @@ const TicketDetails = () => {
                                 <span className="text-gray-500">Email</span>
                                 <span className="text-gray-900 font-medium">user{complaint.userId}@example.com</span>
                             </div>
-                            <div className="flex justify-between text-sm">
-                                <span className="text-gray-500">Phone</span>
-                                <span className="text-gray-900 font-medium">+1 (555) 000-0000</span>
-                            </div>
                         </div>
                     </div>
 
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
                         <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">SLA Status</h3>
-                        <div className="flex items-center gap-2 mb-2">
-                            <div className="h-2 flex-1 bg-gray-100 rounded-full overflow-hidden">
-                                <div className="h-full bg-green-500 w-3/4"></div>
+
+                        {slaStatus ? (
+                            <div className={`rounded-xl p-4 border ${slaStatus.bg} border-opacity-50`}>
+                                <div className={`text-lg font-bold ${slaStatus.color} mb-1`}>
+                                    {slaStatus.text}
+                                </div>
+                                <p className="text-xs text-gray-600">
+                                    Target: {new Date(complaint.slaDeadline).toLocaleString()}
+                                </p>
                             </div>
-                            <span className="text-xs font-bold text-gray-700">75%</span>
-                        </div>
-                        <p className="text-xs text-gray-500">Response time within expected limits.</p>
+                        ) : (
+                            <p className="text-sm text-gray-500">No SLA policy applied.</p>
+                        )}
+                    </div>
+
+                    {/* Assignee Card */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4">Assignee</h3>
+                        {complaint.assignedTo ? (
+                            <div className="flex items-center gap-3">
+                                <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center text-green-700 font-bold text-xs">
+                                    {complaint.assignedTo.substring(0, 2).toUpperCase()}
+                                </div>
+                                <span className="text-sm font-medium text-gray-900">Agent {complaint.assignedTo}</span>
+                            </div>
+                        ) : (
+                            <div className="text-sm text-gray-500 italic">Unassigned</div>
+                        )}
                     </div>
                 </div>
             </div>
