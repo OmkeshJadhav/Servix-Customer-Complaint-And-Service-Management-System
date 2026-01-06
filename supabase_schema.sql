@@ -1,183 +1,199 @@
--- Enable UUID extension if we want to use auto-generated UUIDs in future (optional but recommended)
+-- =========================================================
+-- CCSMS - Customer Complaint & Service Management System
+-- Full Schema + Seed Data (Single Run)
+-- =========================================================
+
+-- Enable UUID extension
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 1. Create Users Table
-CREATE TABLE IF NOT EXISTS public.users (
-    id TEXT PRIMARY KEY, -- Using TEXT to match mock data IDs like 'u1'. In production, prefer UUID.
+-- =========================================================
+-- USERS
+-- =========================================================
+CREATE TABLE public.users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
-    role TEXT CHECK (role IN ('customer', 'agent', 'admin')) NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('customer', 'agent', 'admin')),
     avatar TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 2. Create Complaints Table
-CREATE TABLE IF NOT EXISTS public.complaints (
-    id TEXT PRIMARY KEY, -- Using TEXT to match mock IDs 'c1'
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public read users" ON public.users FOR SELECT USING (true);
+
+-- =========================================================
+-- COMPLAINTS
+-- =========================================================
+CREATE TABLE public.complaints (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     title TEXT NOT NULL,
     description TEXT,
     category TEXT NOT NULL CHECK (category IN ('Internet', 'Billing', 'Hardware', 'Service', 'Sales')),
-    priority TEXT NOT NULL CHECK (priority IN ('High', 'Medium', 'Low', 'Critical')),
+    priority TEXT NOT NULL CHECK (priority IN ('Low', 'Medium', 'High', 'Critical')),
     status TEXT NOT NULL CHECK (status IN ('Open', 'In Progress', 'Resolved', 'Closed')),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    user_id TEXT REFERENCES public.users(id) ON DELETE SET NULL,
-    assigned_to TEXT REFERENCES public.users(id) ON DELETE SET NULL
+    sla_deadline TIMESTAMPTZ,
+    user_id UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    assigned_to UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. Create History Table
-CREATE TABLE IF NOT EXISTS public.complaint_history (
-    id TEXT PRIMARY KEY, -- Using TEXT to match mock IDs 'h1'
-    complaint_id TEXT REFERENCES public.complaints(id) ON DELETE CASCADE NOT NULL,
-    action TEXT NOT NULL,
-    performer TEXT REFERENCES public.users(id) ON DELETE SET NULL,
-    timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    details TEXT
-);
-
--- 4. Enable Row Level Security (RLS) - Recommended
-ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.complaints ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public read complaints" ON public.complaints FOR SELECT USING (true);
+CREATE POLICY "Public insert complaints" ON public.complaints FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public update complaints" ON public.complaints FOR UPDATE USING (true);
+
+-- =========================================================
+-- COMPLAINT HISTORY
+-- =========================================================
+CREATE TABLE public.complaint_history (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    complaint_id UUID NOT NULL REFERENCES public.complaints(id) ON DELETE CASCADE,
+    action TEXT NOT NULL,
+    performer UUID REFERENCES public.users(id) ON DELETE SET NULL,
+    details TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 ALTER TABLE public.complaint_history ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public read history" ON public.complaint_history FOR SELECT USING (true);
+CREATE POLICY "Public insert history" ON public.complaint_history FOR INSERT WITH CHECK (true);
 
--- Policy examples (open access for demo purposes - RESTRICT IN PRODUCTION)
-CREATE POLICY "Allow public read access" ON public.users FOR SELECT USING (true);
-CREATE POLICY "Allow public read access" ON public.complaints FOR SELECT USING (true);
-CREATE POLICY "Allow public insert access" ON public.complaints FOR INSERT WITH CHECK (true);
-CREATE POLICY "Allow public update access" ON public.complaints FOR UPDATE USING (true);
-
-CREATE POLICY "Allow public read access" ON public.complaint_history FOR SELECT USING (true);
-CREATE POLICY "Allow public insert access" ON public.complaint_history FOR INSERT WITH CHECK (true);
-
--- 5. Seed Data (Mock Data)
-
--- Insert Users
-INSERT INTO public.users (id, name, email, role, avatar) VALUES
-('u1', 'Customer Omkesh', 'customer@example.com', 'customer', 'https://i.pravatar.cc/150?u=u1'),
-('u2', 'Agent Omkesh ', 'agent@example.com', 'agent', 'https://i.pravatar.cc/150?u=u2'),
-('u3', 'Admin Omkesh', 'admin@example.com', 'admin', 'https://i.pravatar.cc/150?u=u3'),
-('u4', 'Customer Dhurandhar', 'dhurandhar@example.com', 'customer', 'https://i.pravatar.cc/150?u=u4'),
-('u5', 'Agent Vinod', 'vinod@example.com', 'agent', 'https://i.pravatar.cc/150?u=u5')
-ON CONFLICT (id) DO NOTHING;
-
--- Insert Complaints
-INSERT INTO public.complaints (id, title, description, category, priority, status, created_at, updated_at, user_id, assigned_to) VALUES
-('c1', 'Internet connection is very slow', 'I have been experiencing very slow internet speeds for the last 3 days. I am unable to attend my online meetings.', 'Internet', 'High', 'Open', '2023-10-25T10:00:00Z', '2023-10-25T10:00:00Z', 'u1', NULL),
-('c2', 'Billing issue - duplicate charge', 'I see a duplicate charge of $50 on my latest bill. Please investigate.', 'Billing', 'Medium', 'In Progress', '2023-10-24T14:30:00Z', '2023-10-25T09:15:00Z', 'u1', 'u2'),
-('c3', 'Router not powering on', 'My router died suddenly and is not turning on even after trying different outlets.', 'Hardware', 'Critical', 'Resolved', '2023-10-20T08:00:00Z', '2023-10-22T16:00:00Z', 'u1', 'u2'),
-('c4', 'Wifi dropping frequently', 'The wifi connection drops every 10 minutes. Very frustrating.', 'Internet', 'Medium', 'Open', '2023-10-26T09:00:00Z', '2023-10-26T09:00:00Z', 'u4', NULL),
-('c5', 'Technician missed appointment', 'The technician did not show up for the scheduled installation today.', 'Service', 'High', 'Open', '2023-10-26T14:00:00Z', '2023-10-26T14:00:00Z', 'u4', NULL),
-('c6', 'Need upgrade to higher speed plan', 'I want to upgrade to the 1Gbps plan. How do I proceed?', 'Sales', 'Low', 'Resolved', '2023-10-15T10:00:00Z', '2023-10-16T11:00:00Z', 'u1', 'u5'),
-('c7', 'Payment processed twice', 'My credit card shows two pending transactions for the same amount.', 'Billing', 'High', 'Open', '2023-10-27T08:30:00Z', '2023-10-27T08:30:00Z', 'u4', NULL),
-('c8', 'Modem making weird noise', 'There is a high pitched noise coming from the modem.', 'Hardware', 'Medium', 'In Progress', '2023-10-25T16:00:00Z', '2023-10-26T10:00:00Z', 'u4', 'u5'),
-('c9', 'Request for static IP', 'I need a static IP for my home server setup.', 'Service', 'Low', 'Open', '2023-10-27T11:00:00Z', '2023-10-27T11:00:00Z', 'u1', NULL)
-ON CONFLICT (id) DO NOTHING;
-
--- Insert Complaint History
-INSERT INTO public.complaint_history (id, complaint_id, action, timestamp, performer, details) VALUES
-('h1', 'c1', 'Created', '2023-10-25T10:00:00Z', 'u1', NULL),
-('h2', 'c2', 'Created', '2023-10-24T14:30:00Z', 'u1', NULL),
-('h3', 'c2', 'Assigned', '2023-10-25T09:00:00Z', 'u3', NULL),
-('h4', 'c2', 'Status Change', '2023-10-25T09:15:00Z', 'u2', 'Changed status to In Progress'),
-('h5', 'c4', 'Created', '2023-10-26T09:00:00Z', 'u4', NULL),
-('h6', 'c5', 'Created', '2023-10-26T14:00:00Z', 'u4', NULL),
-('h7', 'c6', 'Created', '2023-10-15T10:00:00Z', 'u1', NULL),
-('h8', 'c6', 'Resolved', '2023-10-16T11:00:00Z', 'u5', 'Plan upgraded'),
-('h9', 'c7', 'Created', '2023-10-27T08:30:00Z', 'u4', NULL),
-('h10', 'c8', 'Created', '2023-10-25T16:00:00Z', 'u4', NULL),
-('h11', 'c8', 'Assigned', '2023-10-26T09:00:00Z', 'u3', NULL),
-('h12', 'c9', 'Created', '2023-10-27T11:00:00Z', 'u1', NULL)
-ON CONFLICT (id) DO NOTHING;
-
--- 6. v2 Schema Updates (Added during Implementation Phase)
-
--- Add SLA Deadline
-ALTER TABLE public.complaints 
-ADD COLUMN IF NOT EXISTS sla_deadline TIMESTAMP WITH TIME ZONE;
-
--- Attachments Table
-CREATE TABLE IF NOT EXISTS public.attachments (
-    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    complaint_id TEXT REFERENCES public.complaints(id) ON DELETE CASCADE NOT NULL,
+-- =========================================================
+-- ATTACHMENTS
+-- =========================================================
+CREATE TABLE public.attachments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    complaint_id UUID NOT NULL REFERENCES public.complaints(id) ON DELETE CASCADE,
     file_url TEXT NOT NULL,
     file_type TEXT,
-    uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    uploaded_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Notifications Table
-CREATE TABLE IF NOT EXISTS public.notifications (
-    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-    user_id TEXT REFERENCES public.users(id) ON DELETE CASCADE NOT NULL,
+ALTER TABLE public.attachments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public read attachments" ON public.attachments FOR SELECT USING (true);
+CREATE POLICY "Public insert attachments" ON public.attachments FOR INSERT WITH CHECK (true);
+
+-- =========================================================
+-- NOTIFICATIONS
+-- =========================================================
+CREATE TABLE public.notifications (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
     message TEXT NOT NULL,
+    type TEXT CHECK (type IN ('info','warning','success','error')) DEFAULT 'info',
     is_read BOOLEAN DEFAULT FALSE,
-    type TEXT CHECK (type IN ('info', 'warning', 'success', 'error')) DEFAULT 'info',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- SLA Policies Table
-CREATE TABLE IF NOT EXISTS public.sla_policies (
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public read notifications" ON public.notifications FOR SELECT USING (true);
+CREATE POLICY "Public insert notifications" ON public.notifications FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public update notifications" ON public.notifications FOR UPDATE USING (true);
+
+-- =========================================================
+-- SLA POLICIES
+-- =========================================================
+CREATE TABLE public.sla_policies (
     priority TEXT PRIMARY KEY,
     hours_to_resolve INTEGER NOT NULL
 );
 
--- Insert Default SLA Policies
-INSERT INTO public.sla_policies (priority, hours_to_resolve) VALUES
+ALTER TABLE public.sla_policies ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public read sla" ON public.sla_policies FOR SELECT USING (true);
+
+INSERT INTO public.sla_policies VALUES
 ('Low', 48),
 ('Medium', 24),
 ('High', 8),
-('Critical', 4)
-ON CONFLICT (priority) DO NOTHING;
+('Critical', 4);
 
--- Enable RLS for new tables
-ALTER TABLE public.attachments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.sla_policies ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Allow public read access" ON public.attachments FOR SELECT USING (true);
-CREATE POLICY "Allow public insert access" ON public.attachments FOR INSERT WITH CHECK (true);
-CREATE POLICY "Allow public read access" ON public.notifications FOR SELECT USING (true);
-CREATE POLICY "Allow public update access" ON public.notifications FOR UPDATE USING (true);
-CREATE POLICY "Allow public insert access" ON public.notifications FOR INSERT WITH CHECK (true);
-CREATE POLICY "Allow public read access" ON public.sla_policies FOR SELECT USING (true);
-
-
--- 1. Enable UUID extension (required for auto-generating IDs)
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
--- 2. Set Default ID Generation (Fixes "null value in column id")
-ALTER TABLE public.complaints 
-ALTER COLUMN id SET DEFAULT uuid_generate_v4()::text;
-
-ALTER TABLE public.complaint_history 
-ALTER COLUMN id SET DEFAULT uuid_generate_v4()::text;
-
--- 3. Enable Write Access (Fixes RLS/Policy errors)
--- Note: We use "IF NOT EXISTS" logic by attempting creation (ignoring errors if they exist) 
--- or you can just run these; Supabase might complain if they exist, but it's safe.
-DO $$ 
-BEGIN
-    IF NOT EXISTS (SELECT FROM pg_policies WHERE policyname = 'Allow public insert access' AND tablename = 'complaints') THEN
-        CREATE POLICY "Allow public insert access" ON public.complaints FOR INSERT WITH CHECK (true);
-    END IF;
-    IF NOT EXISTS (SELECT FROM pg_policies WHERE policyname = 'Allow public update access' AND tablename = 'complaints') THEN
-        CREATE POLICY "Allow public update access" ON public.complaints FOR UPDATE USING (true);
-    END IF;
-    IF NOT EXISTS (SELECT FROM pg_policies WHERE policyname = 'Allow public insert access' AND tablename = 'complaint_history') THEN
-        CREATE POLICY "Allow public insert access" ON public.complaint_history FOR INSERT WITH CHECK (true);
-    END IF;
-END $$;
-
-
--- 1. Create the storage bucket
-INSERT INTO storage.buckets (id, name, public) 
+-- =========================================================
+-- STORAGE BUCKET
+-- =========================================================
+INSERT INTO storage.buckets (id, name, public)
 VALUES ('complaint-files', 'complaint-files', true)
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT DO NOTHING;
 
--- 2. Set Policies for the Bucket (Allow Public Uploads/Reads for now)
-CREATE POLICY "Public Access" 
-ON storage.objects FOR SELECT 
-USING ( bucket_id = 'complaint-files' );
+CREATE POLICY "Public read files"
+ON storage.objects FOR SELECT USING (bucket_id = 'complaint-files');
 
-CREATE POLICY "Public Upload" 
-ON storage.objects FOR INSERT 
-WITH CHECK ( bucket_id = 'complaint-files' );
+CREATE POLICY "Public upload files"
+ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'complaint-files');
+
+-- =========================================================
+-- SEED USERS
+-- =========================================================
+INSERT INTO public.users (name, email, role, avatar) VALUES
+('Omkesh Customer', 'customer@example.com', 'customer', 'https://i.pravatar.cc/150?u=1'),
+('Rahul Customer', 'customer2@example.com', 'customer', 'https://i.pravatar.cc/150?u=2'),
+('Sneha Customer', 'customer3@example.com', 'customer', 'https://i.pravatar.cc/150?u=3'),
+('Amit Customer', 'customer4@example.com', 'customer', 'https://i.pravatar.cc/150?u=4'),
+('Neha Customer', 'customer5@example.com', 'customer', 'https://i.pravatar.cc/150?u=5'),
+
+('Vinod Agent', 'agent@example.com', 'agent', 'https://i.pravatar.cc/150?u=6'),
+('Priya Agent', 'agent2@example.com', 'agent', 'https://i.pravatar.cc/150?u=7'),
+('Kunal Agent', 'agent3@example.com', 'agent', 'https://i.pravatar.cc/150?u=8'),
+
+('Admin One', 'admin@example.com', 'admin', 'https://i.pravatar.cc/150?u=9'),
+('Admin Two', 'admin2@example.com', 'admin', 'https://i.pravatar.cc/150?u=10');
+
+-- =========================================================
+-- SEED COMPLAINTS (15)
+-- =========================================================
+INSERT INTO public.complaints
+(title, description, category, priority, status, user_id, assigned_to)
+SELECT
+    title, description, category, priority, status,
+    (SELECT id FROM users WHERE email = user_email),
+    (SELECT id FROM users WHERE email = agent_email)
+FROM (
+    VALUES
+    ('Slow Internet', 'Internet speed very low', 'Internet','High','Open','customer@example.com','agent@example.com'),
+    ('Billing charged twice', 'Duplicate billing issue','Billing','Medium','In Progress','customer2@example.com','agent2@example.com'),
+    ('Router dead','No power in router','Hardware','Critical','Resolved','customer3@example.com','agent1@example.com'),
+    ('WiFi drops','Connection unstable','Internet','Medium','Open','customer4@example.com','agent3@example.com'),
+    ('Missed appointment','Technician did not arrive','Service','High','Open','customer5@example.com','agent2@example.com'),
+    ('Upgrade plan','Need 1Gbps plan','Sales','Low','Resolved','customer1@example.com','agent3@example.com'),
+    ('Payment pending','Payment stuck','Billing','High','Open','customer2@example.com','agent1@example.com'),
+    ('Modem noise','Strange noise','Hardware','Medium','In Progress','customer3@example.com','agent2@example.com'),
+    ('Static IP','Need static IP','Service','Low','Open','customer4@example.com','agent3@example.com'),
+    ('No internet','Total outage','Internet','Critical','In Progress','customer5@example.com','agent1@example.com'),
+    ('Refund delay','Refund not processed','Billing','Medium','Open','customer1@example.com','agent2@example.com'),
+    ('Cable cut','Wire damaged','Hardware','High','Resolved','customer2@example.com','agent3@example.com'),
+    ('Wrong plan','Incorrect plan activated','Sales','Low','Open','customer3@example.com','agent1@example.com'),
+    ('Router heating','Overheating issue','Hardware','Medium','In Progress','customer4@example.com','agent2@example.com'),
+    ('Installation delay','Delayed setup','Service','High','Open','customer5@example.com','agent3@example.com')
+) AS data(title,description,category,priority,status,user_email,agent_email);
+
+-- =========================================================
+-- SEED HISTORY (AUTO)
+-- =========================================================
+INSERT INTO public.complaint_history (complaint_id, action, performer, details)
+SELECT
+    c.id,
+    'Created',
+    c.user_id,
+    'Complaint created by customer'
+FROM public.complaints c;
+
+-- =========================================================
+-- SEED ATTACHMENTS
+-- =========================================================
+INSERT INTO public.attachments (complaint_id, file_url, file_type)
+SELECT
+    id,
+    'https://example.com/mock-file.png',
+    'image/png'
+FROM public.complaints
+LIMIT 5;
+
+-- =========================================================
+-- SEED NOTIFICATIONS
+-- =========================================================
+INSERT INTO public.notifications (user_id, message, type)
+SELECT
+    id,
+    'Welcome to CCSMS platform!',
+    'success'
+FROM public.users;

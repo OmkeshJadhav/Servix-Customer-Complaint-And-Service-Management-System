@@ -105,14 +105,24 @@ export const api = {
         const deadline = new Date();
         deadline.setHours(deadline.getHours() + hoursToAdd);
 
-        // 2. Auto-Assignment Logic (Simple Rule-Based)
+        // 2. Auto-Assignment Logic (Dynamic UUID Lookup)
         let autoAssignedTo = null;
-        if (complaintData.category === 'Internet') autoAssignedTo = 'u5'; // Agent Vinod
-        if (complaintData.category === 'Hardware') autoAssignedTo = 'u2'; // Agent Omkesh
-        // Other categories remain unassigned for manual triage
+        if (complaintData.category === 'Internet' || complaintData.category === 'Hardware') {
+            // Fetch an agent to assign to (e.g., matching email or just the first available agent)
+            // Ideally, you'd fetch this from the DB. For now, we'll try to find 'agent@example.com' 
+            // from the users table users if we can, or leave it null for manual assignment to avoid UUID errors.
+            const { data: agent } = await supabase
+                .from('users')
+                .select('id')
+                .eq('role', 'agent')
+                .limit(1)
+                .single();
+
+            if (agent) autoAssignedTo = agent.id;
+        }
 
         const insertData = {
-            id: `c${Date.now()}`, // Generate client-side ID to satisfy TEXT primary key
+            // id: `c${Date.now()}`,  <-- REMOVE THIS. Let the DB generate the UUID.
             title: complaintData.title,
             description: complaintData.description,
             category: complaintData.category,
@@ -148,7 +158,7 @@ export const api = {
 
         // 3. Add initial history
         const historyData = {
-            id: `h${Date.now()}`, // Generate client-side ID
+            // id: ... Let DB generate UUID
             complaint_id: data.id,
             action: 'Created',
             performer: insertData.user_id,
@@ -207,7 +217,7 @@ export const api = {
         // Create history entry
         if (updates.status) {
             await supabase.from('complaint_history').insert([{
-                id: `h${Date.now()}_status`,
+                // id: ... Let DB generate
                 complaint_id: id,
                 action: 'Status Change',
                 details: `Changed to ${updates.status}`,
@@ -223,7 +233,7 @@ export const api = {
         }
         if (updates.assignedTo) {
             await supabase.from('complaint_history').insert([{
-                id: `h${Date.now()}_assign`,
+                // id: ... Let DB generate
                 complaint_id: id,
                 action: 'Assigned',
                 details: `Assigned to user ${updates.assignedTo}`,
