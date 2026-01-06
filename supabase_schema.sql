@@ -43,7 +43,11 @@ ALTER TABLE public.complaint_history ENABLE ROW LEVEL SECURITY;
 -- Policy examples (open access for demo purposes - RESTRICT IN PRODUCTION)
 CREATE POLICY "Allow public read access" ON public.users FOR SELECT USING (true);
 CREATE POLICY "Allow public read access" ON public.complaints FOR SELECT USING (true);
+CREATE POLICY "Allow public insert access" ON public.complaints FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public update access" ON public.complaints FOR UPDATE USING (true);
+
 CREATE POLICY "Allow public read access" ON public.complaint_history FOR SELECT USING (true);
+CREATE POLICY "Allow public insert access" ON public.complaint_history FOR INSERT WITH CHECK (true);
 
 -- 5. Seed Data (Mock Data)
 
@@ -84,3 +88,96 @@ INSERT INTO public.complaint_history (id, complaint_id, action, timestamp, perfo
 ('h11', 'c8', 'Assigned', '2023-10-26T09:00:00Z', 'u3', NULL),
 ('h12', 'c9', 'Created', '2023-10-27T11:00:00Z', 'u1', NULL)
 ON CONFLICT (id) DO NOTHING;
+
+-- 6. v2 Schema Updates (Added during Implementation Phase)
+
+-- Add SLA Deadline
+ALTER TABLE public.complaints 
+ADD COLUMN IF NOT EXISTS sla_deadline TIMESTAMP WITH TIME ZONE;
+
+-- Attachments Table
+CREATE TABLE IF NOT EXISTS public.attachments (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    complaint_id TEXT REFERENCES public.complaints(id) ON DELETE CASCADE NOT NULL,
+    file_url TEXT NOT NULL,
+    file_type TEXT,
+    uploaded_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Notifications Table
+CREATE TABLE IF NOT EXISTS public.notifications (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    user_id TEXT REFERENCES public.users(id) ON DELETE CASCADE NOT NULL,
+    message TEXT NOT NULL,
+    is_read BOOLEAN DEFAULT FALSE,
+    type TEXT CHECK (type IN ('info', 'warning', 'success', 'error')) DEFAULT 'info',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- SLA Policies Table
+CREATE TABLE IF NOT EXISTS public.sla_policies (
+    priority TEXT PRIMARY KEY,
+    hours_to_resolve INTEGER NOT NULL
+);
+
+-- Insert Default SLA Policies
+INSERT INTO public.sla_policies (priority, hours_to_resolve) VALUES
+('Low', 48),
+('Medium', 24),
+('High', 8),
+('Critical', 4)
+ON CONFLICT (priority) DO NOTHING;
+
+-- Enable RLS for new tables
+ALTER TABLE public.attachments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sla_policies ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow public read access" ON public.attachments FOR SELECT USING (true);
+CREATE POLICY "Allow public insert access" ON public.attachments FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public read access" ON public.notifications FOR SELECT USING (true);
+CREATE POLICY "Allow public update access" ON public.notifications FOR UPDATE USING (true);
+CREATE POLICY "Allow public insert access" ON public.notifications FOR INSERT WITH CHECK (true);
+CREATE POLICY "Allow public read access" ON public.sla_policies FOR SELECT USING (true);
+
+
+-- 1. Enable UUID extension (required for auto-generating IDs)
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- 2. Set Default ID Generation (Fixes "null value in column id")
+ALTER TABLE public.complaints 
+ALTER COLUMN id SET DEFAULT uuid_generate_v4()::text;
+
+ALTER TABLE public.complaint_history 
+ALTER COLUMN id SET DEFAULT uuid_generate_v4()::text;
+
+-- 3. Enable Write Access (Fixes RLS/Policy errors)
+-- Note: We use "IF NOT EXISTS" logic by attempting creation (ignoring errors if they exist) 
+-- or you can just run these; Supabase might complain if they exist, but it's safe.
+DO $$ 
+BEGIN
+    IF NOT EXISTS (SELECT FROM pg_policies WHERE policyname = 'Allow public insert access' AND tablename = 'complaints') THEN
+        CREATE POLICY "Allow public insert access" ON public.complaints FOR INSERT WITH CHECK (true);
+    END IF;
+    IF NOT EXISTS (SELECT FROM pg_policies WHERE policyname = 'Allow public update access' AND tablename = 'complaints') THEN
+        CREATE POLICY "Allow public update access" ON public.complaints FOR UPDATE USING (true);
+    END IF;
+    IF NOT EXISTS (SELECT FROM pg_policies WHERE policyname = 'Allow public insert access' AND tablename = 'complaint_history') THEN
+        CREATE POLICY "Allow public insert access" ON public.complaint_history FOR INSERT WITH CHECK (true);
+    END IF;
+END $$;
+
+
+-- 1. Create the storage bucket
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('complaint-files', 'complaint-files', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- 2. Set Policies for the Bucket (Allow Public Uploads/Reads for now)
+CREATE POLICY "Public Access" 
+ON storage.objects FOR SELECT 
+USING ( bucket_id = 'complaint-files' );
+
+CREATE POLICY "Public Upload" 
+ON storage.objects FOR INSERT 
+WITH CHECK ( bucket_id = 'complaint-files' );

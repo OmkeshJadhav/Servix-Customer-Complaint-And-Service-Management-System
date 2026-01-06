@@ -31,6 +31,49 @@ const AllComplaints = () => {
         return matchesSearch && matchesFilter;
     });
 
+    const handleExport = () => {
+        try {
+            const dataToExport = complaints;
+            if (!dataToExport.length) {
+                alert("No data to export");
+                return;
+            }
+
+            const headers = ['ID', 'Title', 'Category', 'Priority', 'Status', 'Created At', 'Assigned To'];
+            const csvContent = [
+                headers.join(','),
+                ...dataToExport.map(c => {
+                    const safeTitle = c.title ? `"${c.title.replace(/"/g, '""')}"` : '""';
+                    const safeAssigned = c.assignedTo || 'Unassigned';
+                    const safeDate = c.createdAt ? new Date(c.createdAt).toLocaleDateString() : 'N/A';
+
+                    return [
+                        c.id,
+                        safeTitle,
+                        c.category || '',
+                        c.priority || '',
+                        c.status || '',
+                        safeDate,
+                        safeAssigned
+                    ].join(',');
+                })
+            ].join('\n');
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            const url = URL.createObjectURL(blob);
+            link.setAttribute('href', url);
+            link.setAttribute('download', `complaints_full_export_${new Date().toISOString().split('T')[0]}.csv`);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        } catch (err) {
+            console.error("Export failed:", err);
+            alert("Failed to export.");
+        }
+    };
+
     if (loading) return (
         <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
@@ -45,7 +88,10 @@ const AllComplaints = () => {
                     <p className="text-gray-500 mt-1">View and manage all tickets across the system</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <button className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50">
+                    <button
+                        onClick={handleExport}
+                        className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 transition-colors"
+                    >
                         <Download className="-ml-1 mr-2 h-4 w-4 text-gray-500" />
                         Export CSV
                     </button>
@@ -122,7 +168,7 @@ const AllComplaints = () => {
                                             {new Date(c.createdAt).toLocaleDateString()}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                            <Link to={`/agent/tickets/${c.id}`} className="text-indigo-600 hover:text-indigo-900 inline-flex items-center">
+                                            <Link to={`/admin/complaints/${c.id}`} className="text-indigo-600 hover:text-indigo-900 inline-flex items-center">
                                                 View <ArrowRight size={14} className="ml-1" />
                                             </Link>
                                         </td>
