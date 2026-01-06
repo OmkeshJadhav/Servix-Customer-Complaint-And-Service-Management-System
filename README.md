@@ -1,4 +1,4 @@
-# Sankey Customer Complaint & Service Management System (CCSMS)
+# Servix Customer Complaint & Service Management System (CCSMS)
 
 A full-stack, role-based web application for managing customer service complaints. This system facilitates the entire lifecycle of a support ticket from submission to resolution, offering dedicated workflows for Customers, Service Agents, and Administrators.
 
@@ -17,19 +17,24 @@ A full-stack, role-based web application for managing customer service complaint
 
 ### 🛡️ Admin Dashboard
 - **Analytics**: Visual charts (Bar & Pie) showing complaint trends by Category and Status.
-- **Master List**: centralized view of all tickets with advanced filtering.
+- **Master List**: Centralized view of all tickets with advanced filtering.
 - **User Management**: Manage system access for Customers and Agents.
 
 ## 🛠️ Tech Stack
 
-- **Frontend**: React (Vite)
-- **Styling**: Tailwind CSS, Lucide React (Icons)
+- **Frontend**: React 19 (Vite)
+- **Styling**: Tailwind CSS v4, Lucide React (Icons), `class-variance-authority`
 - **UI Components**: Custom modern components (Cards, Badges, Tables)
-- **Routing**: React Router v6 (Protected Routes & Role-based Access Control)
+- **Routing**: React Router v7 (Protected Routes & Role-based Access Control)
 - **Data Visualization**: Recharts
-- **Backend (Mock)**: In-memory simulation of async API calls (Ready for Supabase integration)
+- **Backend & Database**: Supabase (PostgreSQL, Auth, Realtime)
 
-## 📦 Installation
+## 📦 Prerequisites
+
+- Node.js (v18 or higher)
+- A generic Supabase project (for database and authentication)
+
+## ⚙️ Installation & Setup
 
 1.  **Clone the repository**
     ```bash
@@ -42,41 +47,60 @@ A full-stack, role-based web application for managing customer service complaint
     npm install
     ```
 
-3.  **Run the development server**
+3.  **Environment Setup**
+    Create a `.env` file in the root directory based on `.env.example` (if available) or use the following template:
+
+    ```env
+    VITE_SUPABASE_URL=your_supabase_project_url
+    VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+    ```
+    Replace `your_supabase_project_url` and `your_supabase_anon_key` with your actual Supabase project credentials.
+
+4.  **Database Setup**
+    - Go to your Supabase Dashboard -> SQL Editor.
+    - Copy the contents of [`supabase_schema.sql`](./supabase_schema.sql).
+    - Run the SQL script to create the necessary tables (`users`, `complaints`, `complaint_history`) and seed initial data.
+
+5.  **Run the development server**
     ```bash
     npm run dev
     ```
 
-4.  **Open in Browser**
+6.  **Open in Browser**
     Navigate to `http://localhost:5173`
 
 ## 🔑 Demo Credentials
 
-To test different roles, you can use the quick-login buttons on the login page, or use:
+The database seeding script (`supabase_schema.sql`) creates the following default users:
 
 | Role | Email | Password |
 |------|-------|----------|
-| **Customer** | `customer@example.com` | `password` |
-| **Agent** | `agent@example.com` | `password` |
-| **Admin** | `admin@example.com` | `password` |
+| **Customer** | `customer@example.com` | *(Managed via Supabase Auth or Mock Login)* |
+| **Agent** | `agent@example.com` | *(Managed via Supabase Auth or Mock Login)* |
+| **Admin** | `admin@example.com` | *(Managed via Supabase Auth or Mock Login)* |
+
+> **Note**: The current implementation uses a "Simulated Login" (`api.js`) that checks against the `public.users` table for email matching. It does not yet strictly require Supabase Auth passwords, making it easy to demo/test.
 
 ## 📂 Project Structure
 
 ```
 src/
-├── components/      # Reusable UI components (Layout, Badges, etc.)
-├── context/         # React Context (AuthContext)
+├── components/      # Reusable UI components (Layout, Badges, Forms)
+├── context/         # Global State (AuthContext)
 ├── pages/
 │   ├── admin/       # Admin Dashboard, User Mgmt, Analytics
 │   ├── agent/       # Agent Workspace, Ticket Details
 │   ├── auth/        # Login Page
 │   └── customer/    # Customer Portals
-├── services/        # Mock API / Supabase Client
-└── App.jsx          # Routing & Role definitions
+├── services/
+│   ├── api.js             # Data transformation & business logic
+│   └── supabaseClient.js  # Supabase connection configuration
+└── App.jsx          # Routing & Role protections
 ```
 
 ## 🔮 Future Roadmap
 
-- [ ] **Supabase Integration**: Replace mock data with real database persistence.
-- [ ] **Email Notifications**: Automated emails on status changes.
+- [ ] **Full Supabase Auth**: Switch from simulated login to full Supabase Authentication (JWT).
+- [ ] **Realtime Updates**: Enable Supabase subscriptions for live dashboard updates.
+- [ ] **Email Notifications**: Automated emails on status changes via Supabase Edge Functions.
 - [ ] **Chat Support**: Real-time chat between Customer and Agent.
