@@ -76,6 +76,7 @@ function App() {
           }>
             <Route path="dashboard" element={<AdminDashboard />} />
             <Route path="complaints" element={<AllComplaints />} />
+            <Route path="complaints/:id" element={<TicketDetails />} />
             <Route path="users" element={<UserManagement />} />
           </Route>
 
