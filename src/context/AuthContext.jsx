@@ -16,6 +16,17 @@ export const AuthProvider = ({ children }) => {
         setLoading(false);
     }, []);
 
+    const signup = async (userData) => {
+        try {
+            const response = await api.signup(userData);
+            setUser(response.user);
+            localStorage.setItem('ccsms_user', JSON.stringify(response.user));
+            return response.user;
+        } catch (error) {
+            throw error;
+        }
+    };
+
     const login = async (email, password) => {
         try {
             const response = await api.login(email, password);
@@ -33,7 +44,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, login, logout, loading, isAuthenticated: !!user }}>
+        <AuthContext.Provider value={{ user, signup, login, logout, loading, isAuthenticated: !!user }}>
             {children}
         </AuthContext.Provider>
     );

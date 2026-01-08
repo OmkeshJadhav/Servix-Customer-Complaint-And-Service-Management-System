@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import DashboardLayout from './components/layout/DashboardLayout';
 import Login from './pages/auth/Login';
+import Signup from './pages/auth/Signup';
 import CustomerDashboard from './pages/customer/Dashboard';
 import MyComplaints from './pages/customer/MyComplaints';
 import NewComplaint from './pages/customer/NewComplaint';
@@ -42,6 +43,7 @@ function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
 
           <Route path="/" element={<Navigate to="/login" replace />} />
 

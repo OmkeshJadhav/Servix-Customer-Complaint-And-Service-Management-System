@@ -26,6 +26,37 @@ const transformUser = (data) => {
 };
 
 export const api = {
+    signup: async (userData) => {
+        // Check if user already exists
+        const { data: existingUser } = await supabase
+            .from('users')
+            .select('email')
+            .eq('email', userData.email)
+            .single();
+
+        if (existingUser) {
+            throw new Error('Email already registered');
+        }
+
+        // Insert new user
+        const { data, error } = await supabase
+            .from('users')
+            .insert([{
+                name: userData.name,
+                email: userData.email,
+                role: userData.role || 'customer',
+                avatar: userData.avatar || `https://i.pravatar.cc/150?u=${Date.now()}`
+            }])
+            .select()
+            .single();
+
+        if (error) {
+            throw new Error(error.message || 'Failed to create account');
+        }
+
+        return { user: transformUser(data), token: 'mock-jwt-token-supabase' };
+    },
+
     login: async (email, password) => {
         // SIMULATED LOGIN against public.users table
         const { data, error } = await supabase

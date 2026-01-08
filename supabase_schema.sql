@@ -197,3 +197,10 @@ SELECT
     'Welcome to CCSMS platform!',
     'success'
 FROM public.users;
+
+-- =========================================================
+-- SEED INSERT POLICY
+-- =========================================================
+CREATE POLICY "Public insert users" ON public.users 
+FOR INSERT 
+WITH CHECK (true);
